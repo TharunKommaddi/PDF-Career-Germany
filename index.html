@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>German Learning Materials - View Only</title>
-    <!-- PDF.js library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,15 +33,10 @@
             border-radius: 0 0 5px 5px;
             background-color: white;
         }
-        #pdfViewer {
+        .pdf-viewer {
             width: 100%;
             height: 100%;
-            background-color: white;
-            overflow: auto;
-        }
-        #pdfViewer canvas {
-            margin: 0 auto;
-            display: block;
+            border: none;
         }
         .watermark {
             position: absolute;
@@ -70,9 +63,6 @@
         .controls {
             margin: 20px 0;
             text-align: center;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
         .controls select {
             padding: 10px;
@@ -80,28 +70,6 @@
             border: 1px solid #ddd;
             font-size: 16px;
             margin-right: 10px;
-        }
-        .navigation {
-            display: flex;
-            justify-content: center;
-            margin: 10px 0;
-        }
-        .navigation button {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 15px;
-            margin: 0 5px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .navigation button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        .page-info {
-            margin: 0 15px;
-            line-height: 35px;
         }
         .message {
             text-align: center;
@@ -114,6 +82,17 @@
             color: #666;
             font-size: 14px;
         }
+        /* This is the key part: create an overlay to hide the icon */
+        .icon-blocker {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 80px;  /* Adjust width as needed */
+            height: 80px; /* Adjust height as needed */
+            background-color: white;
+            z-index: 20;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -125,15 +104,9 @@
         
         <div class="controls">
             <select id="pdfSelector" onchange="changePDF()">
-                <option value="1N4WLOHlKiUb_VJfK53ReLYFAQtikKFFT">A1.01 Personalpronomen und Verben</option>
+                <option value="https://drive.google.com/file/d/1N4WLOHlKiUb_VJfK53ReLYFAQtikKFFT/preview">A1.01 Personalpronomen und Verben</option>
                 <!-- Add more options as needed -->
             </select>
-        </div>
-        
-        <div class="navigation">
-            <button id="prev">Previous</button>
-            <div class="page-info">Page <span id="page_num"></span> of <span id="page_count"></span></div>
-            <button id="next">Next</button>
         </div>
         
         <div class="pdf-container">
@@ -141,8 +114,10 @@
             <div class="watermark"></div>
             <!-- The watermark text -->
             <div class="watermark-text">VIEW ONLY</div>
-            <!-- The PDF viewer -->
-            <div id="pdfViewer"></div>
+            <!-- The iframe that will display the PDF -->
+            <iframe id="pdfViewer" class="pdf-viewer" src="" allowfullscreen></iframe>
+            <!-- Overlay to hide the icon in top-right corner -->
+            <div class="icon-blocker"></div>
         </div>
         
         <div class="message">
@@ -156,134 +131,33 @@
     </div>
 
     <script>
-        // Set PDF.js worker path
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+        // Function to change the displayed PDF
+        function changePDF() {
+            const selector = document.getElementById('pdfSelector');
+            const pdfViewer = document.getElementById('pdfViewer');
+            pdfViewer.src = selector.value;
+        }
         
-        let pdfDoc = null;
-        let pageNum = 1;
-        let pageRendering = false;
-        let pageNumPending = null;
-        let scale = 1.5;
-        let canvas = document.createElement('canvas');
-        let ctx = canvas.getContext('2d');
-        let pdfViewer = document.getElementById('pdfViewer');
-        pdfViewer.appendChild(canvas);
-        
-        // Initial PDF loading
+        // Initialize with the first PDF
         document.addEventListener('DOMContentLoaded', function() {
             changePDF();
             
-            // Disable right-click
+            // Disable right-click to prevent easy downloading
             document.addEventListener('contextmenu', function(e) {
                 e.preventDefault();
                 return false;
             });
-            
-            // Disable keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
-                if ((e.ctrlKey || e.metaKey) && 
-                    (e.key === 's' || e.key === 'p' || e.key === 'a')) {
-                    e.preventDefault();
-                    return false;
-                }
-            });
-            
-            // Setup navigation buttons
-            document.getElementById('prev').addEventListener('click', onPrevPage);
-            document.getElementById('next').addEventListener('click', onNextPage);
         });
         
-        // Function to change the PDF
-        function changePDF() {
-            const selector = document.getElementById('pdfSelector');
-            const fileId = selector.value;
-            const url = `https://cors-anywhere.herokuapp.com/https://drive.google.com/uc?export=download&id=${fileId}`;
-            
-            // You may need to set up your own proxy or CORS workaround
-            // Alternative option: host the PDFs directly on GitHub along with the webpage
-            
-            loadPDF(url);
-        }
-        
-        // Load a PDF from URL
-        function loadPDF(url) {
-            pdfjsLib.getDocument(url).promise.then(function(pdf) {
-                pdfDoc = pdf;
-                document.getElementById('page_count').textContent = pdf.numPages;
-                
-                // Initial page render
-                pageNum = 1;
-                renderPage(pageNum);
-            }).catch(function(error) {
-                console.error('Error loading PDF:', error);
-                alert('Error loading PDF. You may need to host the PDF files directly on GitHub.');
-            });
-        }
-        
-        // Render the specified page
-        function renderPage(num) {
-            pageRendering = true;
-            
-            // Using promise to fetch the page
-            pdfDoc.getPage(num).then(function(page) {
-                let viewport = page.getViewport({scale: scale});
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-                
-                // Render PDF page into canvas context
-                let renderContext = {
-                    canvasContext: ctx,
-                    viewport: viewport
-                };
-                
-                let renderTask = page.render(renderContext);
-                
-                // Wait for rendering to finish
-                renderTask.promise.then(function() {
-                    pageRendering = false;
-                    
-                    if (pageNumPending !== null) {
-                        // New page rendering is pending
-                        renderPage(pageNumPending);
-                        pageNumPending = null;
-                    }
-                });
-            });
-            
-            // Update page counters
-            document.getElementById('page_num').textContent = num;
-            
-            // Update button states
-            document.getElementById('prev').disabled = (num <= 1);
-            document.getElementById('next').disabled = (num >= pdfDoc.numPages);
-        }
-        
-        // Go to previous page
-        function onPrevPage() {
-            if (pageNum <= 1) {
-                return;
+        // Prevent direct interaction with iframe content that might allow downloads
+        document.addEventListener('keydown', function(e) {
+            // Disable Ctrl+S, Ctrl+P etc.
+            if ((e.ctrlKey || e.metaKey) && 
+                (e.key === 's' || e.key === 'p' || e.key === 'a')) {
+                e.preventDefault();
+                return false;
             }
-            pageNum--;
-            queueRenderPage(pageNum);
-        }
-        
-        // Go to next page
-        function onNextPage() {
-            if (pageNum >= pdfDoc.numPages) {
-                return;
-            }
-            pageNum++;
-            queueRenderPage(pageNum);
-        }
-        
-        // Queue the page for rendering
-        function queueRenderPage(num) {
-            if (pageRendering) {
-                pageNumPending = num;
-            } else {
-                renderPage(num);
-            }
-        }
+        });
     </script>
 </body>
 </html>
