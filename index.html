@@ -82,16 +82,15 @@
             color: #666;
             font-size: 14px;
         }
-        /* This is the key part: create an overlay to hide the icon */
-        .icon-blocker {
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 80px;  /* Adjust width as needed */
-            height: 80px; /* Adjust height as needed */
-            background-color: white;
-            z-index: 20;
-            pointer-events: none;
+        
+        /* Custom styles for the iframe to hide Google Drive elements */
+        .pdf-viewer {
+            position: relative;
+        }
+        
+        /* Create an element to inject a CSS stylesheet into the iframe */
+        .style-injector {
+            display: none;
         }
     </style>
 </head>
@@ -116,8 +115,6 @@
             <div class="watermark-text">VIEW ONLY</div>
             <!-- The iframe that will display the PDF -->
             <iframe id="pdfViewer" class="pdf-viewer" src="" allowfullscreen></iframe>
-            <!-- Overlay to hide the icon in top-right corner -->
-            <div class="icon-blocker"></div>
         </div>
         
         <div class="message">
@@ -136,6 +133,67 @@
             const selector = document.getElementById('pdfSelector');
             const pdfViewer = document.getElementById('pdfViewer');
             pdfViewer.src = selector.value;
+            
+            // After iframe loads, hide Google Drive UI elements
+            pdfViewer.onload = function() {
+                hideGoogleDriveElements(pdfViewer);
+            };
+        }
+        
+        // Function to hide Google Drive UI elements
+        function hideGoogleDriveElements(iframe) {
+            try {
+                // Try to access the iframe content
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                
+                // Create a new style element
+                const style = iframeDoc.createElement('style');
+                style.textContent = `
+                    /* Hide the open-in-new-window icon */
+                    .ndfHFb-c4YZDc-Wrql6b, 
+                    .ndfHFb-c4YZDc-to915-LgbsSe,
+                    [aria-label="Open in new window"],
+                    [title="Open in new window"],
+                    .ndfHFb-c4YZDc-GSQQnc-LgbsSe {
+                        display: none !important;
+                        opacity: 0 !important;
+                        visibility: hidden !important;
+                    }
+                    
+                    /* Hide any other potentially problematic elements */
+                    .ndfHFb-c4YZDc-nJjxad-nK2kYb,
+                    .ndfHFb-c4YZDc-nJjxad-DkfjY,
+                    .ndfHFb-c4YZDc-to915,
+                    .ndfHFb-c4YZDc-vyDMJf-aZ2wEe,
+                    .ndfHFb-c4YZDc-j7LFlb {
+                        display: none !important;
+                    }
+                    
+                    /* Hide any buttons in the top right corner */
+                    [role="button"] {
+                        display: none !important;
+                    }
+                    
+                    /* Overlay to block interactive elements */
+                    body:after {
+                        content: "";
+                        position: fixed;
+                        top: 0;
+                        right: 0;
+                        width: 100px;
+                        height: 100px;
+                        z-index: 9999;
+                        pointer-events: auto;
+                        background: transparent;
+                    }
+                `;
+                
+                // Add the style to the iframe document
+                iframeDoc.head.appendChild(style);
+            } catch (e) {
+                // If access is blocked due to same-origin policy, this will fail silently
+                console.log("Could not modify iframe content due to same-origin policy");
+            }
         }
         
         // Initialize with the first PDF
