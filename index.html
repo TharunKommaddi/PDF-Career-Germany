@@ -82,15 +82,19 @@
             color: #666;
             font-size: 14px;
         }
-        
-        /* Custom styles for the iframe to hide Google Drive elements */
-        .pdf-viewer {
-            position: relative;
+        /* Override Google Drive frame styles to hide download buttons */
+        iframe {
+            overflow: hidden;
         }
-        
-        /* Create an element to inject a CSS stylesheet into the iframe */
-        .style-injector {
-            display: none;
+        /* Create an invisible overlay to prevent clicking on icons */
+        .click-shield {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 15;
+            cursor: default;
         }
     </style>
 </head>
@@ -113,8 +117,10 @@
             <div class="watermark"></div>
             <!-- The watermark text -->
             <div class="watermark-text">VIEW ONLY</div>
+            <!-- The click shield to prevent interaction with Google Drive icons -->
+            <div class="click-shield"></div>
             <!-- The iframe that will display the PDF -->
-            <iframe id="pdfViewer" class="pdf-viewer" src="" allowfullscreen></iframe>
+            <iframe id="pdfViewer" class="pdf-viewer" src="" allowfullscreen sandbox="allow-scripts allow-same-origin"></iframe>
         </div>
         
         <div class="message">
@@ -134,66 +140,24 @@
             const pdfViewer = document.getElementById('pdfViewer');
             pdfViewer.src = selector.value;
             
-            // After iframe loads, hide Google Drive UI elements
-            pdfViewer.onload = function() {
-                hideGoogleDriveElements(pdfViewer);
-            };
-        }
-        
-        // Function to hide Google Drive UI elements
-        function hideGoogleDriveElements(iframe) {
-            try {
-                // Try to access the iframe content
-                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                
-                // Create a new style element
-                const style = iframeDoc.createElement('style');
-                style.textContent = `
-                    /* Hide the open-in-new-window icon */
-                    .ndfHFb-c4YZDc-Wrql6b, 
-                    .ndfHFb-c4YZDc-to915-LgbsSe,
-                    [aria-label="Open in new window"],
-                    [title="Open in new window"],
-                    .ndfHFb-c4YZDc-GSQQnc-LgbsSe {
-                        display: none !important;
-                        opacity: 0 !important;
-                        visibility: hidden !important;
-                    }
-                    
-                    /* Hide any other potentially problematic elements */
-                    .ndfHFb-c4YZDc-nJjxad-nK2kYb,
-                    .ndfHFb-c4YZDc-nJjxad-DkfjY,
-                    .ndfHFb-c4YZDc-to915,
-                    .ndfHFb-c4YZDc-vyDMJf-aZ2wEe,
-                    .ndfHFb-c4YZDc-j7LFlb {
-                        display: none !important;
-                    }
-                    
-                    /* Hide any buttons in the top right corner */
-                    [role="button"] {
-                        display: none !important;
-                    }
-                    
-                    /* Overlay to block interactive elements */
-                    body:after {
-                        content: "";
-                        position: fixed;
-                        top: 0;
-                        right: 0;
-                        width: 100px;
-                        height: 100px;
-                        z-index: 9999;
-                        pointer-events: auto;
-                        background: transparent;
-                    }
-                `;
-                
-                // Add the style to the iframe document
-                iframeDoc.head.appendChild(style);
-            } catch (e) {
-                // If access is blocked due to same-origin policy, this will fail silently
-                console.log("Could not modify iframe content due to same-origin policy");
-            }
+            // Add overlay to prevent clicking on Google Drive UI elements
+            setTimeout(function() {
+                try {
+                    const iframeDocument = pdfViewer.contentDocument || pdfViewer.contentWindow.document;
+                    const overlay = iframeDocument.createElement('div');
+                    overlay.style.position = 'absolute';
+                    overlay.style.top = '0';
+                    overlay.style.left = '0';
+                    overlay.style.width = '100%';
+                    overlay.style.height = '100%';
+                    overlay.style.zIndex = '9999';
+                    overlay.style.pointerEvents = 'none';
+                    iframeDocument.body.appendChild(overlay);
+                } catch (e) {
+                    // Cross-origin restrictions may prevent this
+                    console.log("Could not access iframe content due to cross-origin policy");
+                }
+            }, 2000);
         }
         
         // Initialize with the first PDF
@@ -204,6 +168,24 @@
             document.addEventListener('contextmenu', function(e) {
                 e.preventDefault();
                 return false;
+            });
+            
+            // Completely disable all links in the iframe
+            document.getElementById('pdfViewer').addEventListener('load', function() {
+                try {
+                    const iframeDocument = this.contentDocument || this.contentWindow.document;
+                    const links = iframeDocument.getElementsByTagName('a');
+                    
+                    for(let i = 0; i < links.length; i++) {
+                        links[i].addEventListener('click', function(e) {
+                            e.preventDefault();
+                            return false;
+                        });
+                    }
+                } catch (e) {
+                    // Cross-origin restrictions may prevent this
+                    console.log("Could not access iframe content due to cross-origin policy");
+                }
             });
         });
         
