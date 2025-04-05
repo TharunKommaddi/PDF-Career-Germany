@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>German Learning Materials - View Only</title>
-    <!-- PDF.js library -->
+    <!-- PDF.js library from CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         body {
@@ -35,13 +35,13 @@
             border-radius: 0 0 5px 5px;
             background-color: white;
         }
-        #pdfViewer {
+        #pdf-viewer {
             width: 100%;
             height: 100%;
             background-color: white;
             overflow: auto;
         }
-        #pdfViewer canvas {
+        #pdf-viewer canvas {
             margin: 0 auto;
             display: block;
         }
@@ -114,6 +114,14 @@
             color: #666;
             font-size: 14px;
         }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -124,15 +132,15 @@
         </header>
         
         <div class="controls">
-            <select id="pdfSelector" onchange="changePDF()">
-                <option value="1N4WLOHlKiUb_VJfK53ReLYFAQtikKFFT">A1.01 Personalpronomen und Verben</option>
+            <select id="pdf-selector" onchange="changePDF()">
+                <option value="A1.01_PersonalPronomenUndVerben.pdf">A1.01 Personalpronomen und Verben</option>
                 <!-- Add more options as needed -->
             </select>
         </div>
         
         <div class="navigation">
             <button id="prev">Previous</button>
-            <div class="page-info">Page <span id="page_num"></span> of <span id="page_count"></span></div>
+            <div class="page-info">Page <span id="page-num">0</span> of <span id="page-count">0</span></div>
             <button id="next">Next</button>
         </div>
         
@@ -141,8 +149,10 @@
             <div class="watermark"></div>
             <!-- The watermark text -->
             <div class="watermark-text">VIEW ONLY</div>
+            <!-- Loading message -->
+            <div id="loading" class="loading">Loading PDF...</div>
             <!-- The PDF viewer -->
-            <div id="pdfViewer"></div>
+            <div id="pdf-viewer"></div>
         </div>
         
         <div class="message">
@@ -159,91 +169,76 @@
         // Set PDF.js worker path
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         
+        // Initialize variables
         let pdfDoc = null;
         let pageNum = 1;
         let pageRendering = false;
         let pageNumPending = null;
         let scale = 1.5;
-        let canvas = document.createElement('canvas');
-        let ctx = canvas.getContext('2d');
-        let pdfViewer = document.getElementById('pdfViewer');
-        pdfViewer.appendChild(canvas);
+        let pdfViewer = document.getElementById('pdf-viewer');
+        let loadingMessage = document.getElementById('loading');
         
-        // Initial PDF loading
-        document.addEventListener('DOMContentLoaded', function() {
-            changePDF();
-            
-            // Disable right-click
-            document.addEventListener('contextmenu', function(e) {
-                e.preventDefault();
-                return false;
-            });
-            
-            // Disable keyboard shortcuts
-            document.addEventListener('keydown', function(e) {
-                if ((e.ctrlKey || e.metaKey) && 
-                    (e.key === 's' || e.key === 'p' || e.key === 'a')) {
-                    e.preventDefault();
-                    return false;
-                }
-            });
-            
-            // Setup navigation buttons
-            document.getElementById('prev').addEventListener('click', onPrevPage);
-            document.getElementById('next').addEventListener('click', onNextPage);
+        // PDF file paths - using the exact filename from your repository
+        const pdfFiles = {
+            'A1.01_PersonalPronomenUndVerben.pdf': 'A1.01 Personalpronomen und Verben (1).pdf'
+        };
+        
+        // Disable right-click on the entire document
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
         });
         
-        // Function to change the PDF
-        function changePDF() {
-            const selector = document.getElementById('pdfSelector');
-            const fileId = selector.value;
-            const url = `https://cors-anywhere.herokuapp.com/https://drive.google.com/uc?export=download&id=${fileId}`;
-            
-            // You may need to set up your own proxy or CORS workaround
-            // Alternative option: host the PDFs directly on GitHub along with the webpage
-            
-            loadPDF(url);
-        }
+        // Disable keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && 
+                (e.key === 's' || e.key === 'p' || e.key === 'a' || e.key === 'c')) {
+                e.preventDefault();
+                return false;
+            }
+        });
         
-        // Load a PDF from URL
-        function loadPDF(url) {
-            pdfjsLib.getDocument(url).promise.then(function(pdf) {
-                pdfDoc = pdf;
-                document.getElementById('page_count').textContent = pdf.numPages;
-                
-                // Initial page render
-                pageNum = 1;
-                renderPage(pageNum);
-            }).catch(function(error) {
-                console.error('Error loading PDF:', error);
-                alert('Error loading PDF. You may need to host the PDF files directly on GitHub.');
-            });
-        }
-        
-        // Render the specified page
+        // Function to render a specific page
         function renderPage(num) {
             pageRendering = true;
             
-            // Using promise to fetch the page
+            // Show loading message
+            loadingMessage.style.display = 'block';
+            
+            // Get the page
             pdfDoc.getPage(num).then(function(page) {
-                let viewport = page.getViewport({scale: scale});
+                // Calculate scale to fit the container width
+                const viewport = page.getViewport({ scale: scale });
+                
+                // Create canvas for this page
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
                 
-                // Render PDF page into canvas context
-                let renderContext = {
-                    canvasContext: ctx,
+                // Clear the viewer and add this canvas
+                while (pdfViewer.firstChild) {
+                    pdfViewer.removeChild(pdfViewer.firstChild);
+                }
+                pdfViewer.appendChild(canvas);
+                
+                // Render the PDF page
+                const renderContext = {
+                    canvasContext: context,
                     viewport: viewport
                 };
                 
-                let renderTask = page.render(renderContext);
+                const renderTask = page.render(renderContext);
                 
                 // Wait for rendering to finish
                 renderTask.promise.then(function() {
                     pageRendering = false;
                     
+                    // Hide loading message
+                    loadingMessage.style.display = 'none';
+                    
+                    // If there's a page pending, render it
                     if (pageNumPending !== null) {
-                        // New page rendering is pending
                         renderPage(pageNumPending);
                         pageNumPending = null;
                     }
@@ -251,32 +246,14 @@
             });
             
             // Update page counters
-            document.getElementById('page_num').textContent = num;
+            document.getElementById('page-num').textContent = num;
             
             // Update button states
             document.getElementById('prev').disabled = (num <= 1);
             document.getElementById('next').disabled = (num >= pdfDoc.numPages);
         }
         
-        // Go to previous page
-        function onPrevPage() {
-            if (pageNum <= 1) {
-                return;
-            }
-            pageNum--;
-            queueRenderPage(pageNum);
-        }
-        
-        // Go to next page
-        function onNextPage() {
-            if (pageNum >= pdfDoc.numPages) {
-                return;
-            }
-            pageNum++;
-            queueRenderPage(pageNum);
-        }
-        
-        // Queue the page for rendering
+        // Function to queue a page for rendering
         function queueRenderPage(num) {
             if (pageRendering) {
                 pageNumPending = num;
@@ -284,6 +261,119 @@
                 renderPage(num);
             }
         }
+        
+        // Previous page button handler
+        document.getElementById('prev').addEventListener('click', function() {
+            if (pageNum <= 1) {
+                return;
+            }
+            pageNum--;
+            queueRenderPage(pageNum);
+        });
+        
+        // Next page button handler
+        document.getElementById('next').addEventListener('click', function() {
+            if (pageNum >= pdfDoc.numPages) {
+                return;
+            }
+            pageNum++;
+            queueRenderPage(pageNum);
+        });
+        
+        // Function to load a PDF
+        function loadPDF(url) {
+            // Show loading message
+            loadingMessage.style.display = 'block';
+            
+            // Handle spaces and special characters in the filename
+            const encodedUrl = encodeURIComponent(url);
+            const decodedUrl = decodeURIComponent(encodedUrl);
+            
+            // Load the PDF
+            pdfjsLib.getDocument(decodedUrl).promise.then(function(pdf) {
+                pdfDoc = pdf;
+                document.getElementById('page-count').textContent = pdf.numPages;
+                
+                // Initial page render
+                pageNum = 1;
+                renderPage(pageNum);
+            }).catch(function(error) {
+                console.error('Error loading PDF:', error);
+                loadingMessage.textContent = 'Error loading PDF. Please try again later.';
+            });
+        }
+        
+        // Function to change the current PDF
+        function changePDF() {
+            const selector = document.getElementById('pdf-selector');
+            const selectedPdf = selector.value;
+            const pdfUrl = pdfFiles[selectedPdf];
+            
+            if (pdfUrl) {
+                loadPDF(pdfUrl);
+            }
+        }
+        
+        // Initialize with the first PDF
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set up button event listeners
+            document.getElementById('prev').addEventListener('click', function() {
+                if (pageNum <= 1) return;
+                pageNum--;
+                queueRenderPage(pageNum);
+            });
+            
+            document.getElementById('next').addEventListener('click', function() {
+                if (pageNum >= pdfDoc.numPages) return;
+                pageNum++;
+                queueRenderPage(pageNum);
+            });
+            
+            // Initial PDF load
+            changePDF();
+        });
+        
+        // IMPORTANT SETUP NOTES:
+        
+        // 1. Your PDF file is already in your GitHub repository
+        // 2. Using the exact name "A1.01 Personalpronomen und Verben (1).pdf"
+        // 3. Make sure it's in the same directory as this HTML file
+        
+        // For the temporary solution until you upload the PDF:
+        // This code will attempt to directly fetch from Google Drive, but this will likely fail due to CORS issues
+        function fetchPdfFromGoogleDrive(fileId) {
+            const proxyUrl = 'https://api.allorigins.win/raw?url=';
+            const driveUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
+            
+            return fetch(proxyUrl + encodeURIComponent(driveUrl))
+                .then(response => response.arrayBuffer())
+                .catch(error => {
+                    console.error('Error fetching from Google Drive:', error);
+                    loadingMessage.textContent = 'Please upload the PDF directly to GitHub for this viewer to work.';
+                });
+        }
+        
+        // Try to load from Google Drive initially (but will likely fail due to CORS)
+        // This is a fallback until you upload the PDF directly to GitHub
+        window.addEventListener('load', function() {
+            const fileId = '1N4WLOHlKiUb_VJfK53ReLYFAQtikKFFT';
+            
+            fetchPdfFromGoogleDrive(fileId)
+                .then(arrayBuffer => {
+                    if (arrayBuffer) {
+                        pdfjsLib.getDocument({data: arrayBuffer}).promise.then(function(pdf) {
+                            pdfDoc = pdf;
+                            document.getElementById('page-count').textContent = pdf.numPages;
+                            pageNum = 1;
+                            renderPage(pageNum);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load PDF from Google Drive:', error);
+                    loadingMessage.textContent = 'Please upload the PDF directly to GitHub for this viewer to work.';
+                });
+        });
     </script>
 </body>
 </html>
