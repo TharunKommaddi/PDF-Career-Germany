@@ -17,19 +17,27 @@
         .container {
             max-width: 1000px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 10px 20px;
         }
         header {
             background-color: #4CAF50;
             color: white;
-            padding: 20px;
+            padding: 15px;
             text-align: center;
             border-radius: 5px 5px 0 0;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        header p {
+            margin: 5px 0 0 0;
+            font-size: 14px;
         }
         .pdf-container {
             position: relative;
             width: 100%;
-            height: 800px;
+            height: 75vh; /* Use viewport height for better mobile experience */
             overflow: hidden;
             border: 1px solid #ddd;
             border-radius: 0 0 5px 5px;
@@ -41,54 +49,62 @@
             background-color: white;
             overflow-y: auto;
             padding: 10px;
+            box-sizing: border-box;
         }
         #pdf-viewer canvas {
             margin: 0 auto;
             display: block;
             margin-bottom: 10px; /* Space between pages */
+            max-width: 100%; /* Ensure canvas doesn't overflow on mobile */
         }
         .controls {
-            margin: 20px 0;
+            margin: 15px 0;
             text-align: center;
             display: flex;
             justify-content: center;
             align-items: center;
+            flex-wrap: wrap; /* Wrap on smaller screens */
         }
         .controls select {
-            padding: 10px;
+            padding: 8px;
             border-radius: 5px;
             border: 1px solid #ddd;
             font-size: 16px;
-            margin-right: 10px;
+            margin: 5px;
+            width: 100%;
+            max-width: 300px;
         }
         .zoom-controls {
             display: flex;
             justify-content: center;
             margin: 10px 0;
+            flex-wrap: wrap; /* Wrap on smaller screens */
         }
         .zoom-controls button {
             background-color: #4CAF50;
             color: white;
             border: none;
             padding: 8px 15px;
-            margin: 0 5px;
+            margin: 5px;
             border-radius: 5px;
             cursor: pointer;
         }
         .zoom-info {
-            margin: 0 15px;
+            margin: 5px 15px;
             line-height: 35px;
         }
         .message {
             text-align: center;
             color: #555;
-            margin: 20px 0;
+            margin: 15px 0;
+            font-size: 14px;
         }
         footer {
-            margin-top: 30px;
+            margin-top: 20px;
             text-align: center;
             color: #666;
-            font-size: 14px;
+            font-size: 12px;
+            padding: 10px;
         }
         .loading {
             position: absolute;
@@ -103,6 +119,41 @@
             height: 1px;
             background-color: #eee;
             margin: 10px 0;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            header {
+                padding: 10px;
+            }
+            header h1 {
+                font-size: 20px;
+            }
+            .pdf-container {
+                height: 70vh;
+            }
+            .zoom-controls button {
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            header h1 {
+                font-size: 18px;
+            }
+            header p {
+                font-size: 12px;
+            }
+            .pdf-container {
+                height: 65vh;
+            }
+            .message, footer {
+                font-size: 11px;
+            }
         }
     </style>
 </head>
@@ -173,6 +224,34 @@
             }
         });
         
+        // Set initial scale based on device width
+        function setInitialScale() {
+            // On mobile, start with a scale that makes content readable
+            if (window.innerWidth < 768) {
+                // Smaller screens get a larger initial scale to make text readable
+                const baseScale = window.innerWidth < 480 ? 1.2 : 1.0;
+                scale = baseScale;
+                document.getElementById('zoom-value').textContent = Math.round(scale * 100) + '%';
+            }
+        }
+        
+        // Function to calculate optimal scale for device width
+        function getOptimalScale() {
+            // Base the scale on the container width vs typical PDF width (612pt)
+            const containerWidth = pdfViewer.clientWidth - 20; // Account for padding
+            const pdfWidth = 612; // Standard PDF width in points
+            
+            // Calculate scale that would fit the width minus some margin
+            let optimalScale = containerWidth / pdfWidth;
+            
+            // Cap the scale to avoid too small text on mobile
+            if (window.innerWidth < 768 && optimalScale < 0.8) {
+                optimalScale = 0.8;
+            }
+            
+            return optimalScale;
+        }
+        
         // Function to render all pages of the PDF for continuous scrolling
         async function renderAllPages() {
             // Clear the viewer first
@@ -181,19 +260,27 @@
             
             const totalPages = pdfDoc.numPages;
             
-            // Render each page
+            // Render each page with high-quality settings
             for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
                 // Get the page
                 const page = await pdfDoc.getPage(pageNum);
                 
-                // Calculate scale to fit the container width
+                // Calculate scale to fit the container width with high DPI for quality
                 const viewport = page.getViewport({ scale: scale });
                 
-                // Create canvas for this page
+                // Create canvas with higher resolution for better quality
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+                
+                // Use higher pixel density for better quality
+                const pixelRatio = window.devicePixelRatio || 1;
+                canvas.height = viewport.height * pixelRatio;
+                canvas.width = viewport.width * pixelRatio;
+                canvas.style.height = viewport.height + 'px';
+                canvas.style.width = viewport.width + 'px';
+                
+                // Scale the context for higher resolution
+                context.scale(pixelRatio, pixelRatio);
                 
                 // Add a subtle page separator (only between pages, not before the first page)
                 if (pageNum > 1) {
@@ -205,10 +292,12 @@
                 // Add canvas to the viewer
                 pdfViewer.appendChild(canvas);
                 
-                // Render the PDF page
+                // Render the PDF page with high-quality settings
                 const renderContext = {
                     canvasContext: context,
-                    viewport: viewport
+                    viewport: viewport,
+                    enableWebGL: true,
+                    renderInteractiveForms: true
                 };
                 
                 await page.render(renderContext).promise;
@@ -223,8 +312,15 @@
             // Show loading message
             loadingMessage.style.display = 'block';
             
-            // Load the PDF
-            pdfjsLib.getDocument(url).promise
+            // Load the PDF with higher quality settings
+            pdfjsLib.getDocument({
+                url: url,
+                cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/cmaps/',
+                cMapPacked: true,
+                disableRange: false,
+                disableStream: false,
+                disableAutoFetch: false
+            }).promise
                 .then(function(pdf) {
                     pdfDoc = pdf;
                     renderAllPages();
@@ -253,8 +349,24 @@
             renderAllPages();
         }
         
+        // Function to handle window resize for responsive behavior
+        function handleResize() {
+            // Only re-render if the width changes significantly (to avoid constant re-renders)
+            const newOptimalScale = getOptimalScale();
+            if (Math.abs(newOptimalScale - scale) > 0.2) {
+                scale = newOptimalScale;
+                document.getElementById('zoom-value').textContent = Math.round(scale * 100) + '%';
+                if (pdfDoc) {
+                    renderAllPages();
+                }
+            }
+        }
+        
         // Initialize the viewer
         document.addEventListener('DOMContentLoaded', function() {
+            // Set initial scale based on device
+            setInitialScale();
+            
             // Set up zoom control event listeners
             document.getElementById('zoom-in').addEventListener('click', function() {
                 if (scale < 2.0) {
@@ -266,6 +378,13 @@
                 if (scale > 0.5) {
                     updateZoom(scale - 0.1);
                 }
+            });
+            
+            // Add resize listener for responsive behavior
+            window.addEventListener('resize', function() {
+                // Use debounce to avoid too many recalculations
+                clearTimeout(window.resizeTimer);
+                window.resizeTimer = setTimeout(handleResize, 250);
             });
             
             // Initial PDF load
