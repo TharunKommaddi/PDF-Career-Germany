@@ -39,11 +39,13 @@
             width: 100%;
             height: 100%;
             background-color: white;
-            overflow: auto;
+            overflow-y: auto;
+            padding: 10px;
         }
         #pdf-viewer canvas {
             margin: 0 auto;
             display: block;
+            margin-bottom: 10px; /* Space between pages */
         }
         .watermark {
             position: absolute;
@@ -81,12 +83,12 @@
             font-size: 16px;
             margin-right: 10px;
         }
-        .navigation {
+        .zoom-controls {
             display: flex;
             justify-content: center;
             margin: 10px 0;
         }
-        .navigation button {
+        .zoom-controls button {
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -95,11 +97,7 @@
             border-radius: 5px;
             cursor: pointer;
         }
-        .navigation button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        .page-info {
+        .zoom-info {
             margin: 0 15px;
             line-height: 35px;
         }
@@ -122,6 +120,15 @@
             font-size: 18px;
             color: #4CAF50;
         }
+        .page-separator {
+            width: 100%;
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+            margin: 5px 0;
+            pointer-events: none;
+            user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -138,10 +145,10 @@
             </select>
         </div>
         
-        <div class="navigation">
-            <button id="prev">Previous</button>
-            <div class="page-info">Page <span id="page-num">0</span> of <span id="page-count">0</span></div>
-            <button id="next">Next</button>
+        <div class="zoom-controls">
+            <button id="zoom-out">Zoom Out</button>
+            <div class="zoom-info">Zoom: <span id="zoom-value">100%</span></div>
+            <button id="zoom-in">Zoom In</button>
         </div>
         
         <div class="pdf-container">
@@ -171,10 +178,7 @@
         
         // Initialize variables
         let pdfDoc = null;
-        let pageNum = 1;
-        let pageRendering = false;
-        let pageNumPending = null;
-        let scale = 1.5;
+        let scale = 1.0; // Initial zoom scale
         let pdfViewer = document.getElementById('pdf-viewer');
         let loadingMessage = document.getElementById('loading');
         
@@ -198,15 +202,19 @@
             }
         });
         
-        // Function to render a specific page
-        function renderPage(num) {
-            pageRendering = true;
-            
-            // Show loading message
+        // Function to render all pages of the PDF for continuous scrolling
+        async function renderAllPages() {
+            // Clear the viewer first
+            pdfViewer.innerHTML = '';
             loadingMessage.style.display = 'block';
             
-            // Get the page
-            pdfDoc.getPage(num).then(function(page) {
+            const totalPages = pdfDoc.numPages;
+            
+            // Render each page
+            for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                // Get the page
+                const page = await pdfDoc.getPage(pageNum);
+                
                 // Calculate scale to fit the container width
                 const viewport = page.getViewport({ scale: scale });
                 
@@ -216,10 +224,14 @@
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
                 
-                // Clear the viewer and add this canvas
-                while (pdfViewer.firstChild) {
-                    pdfViewer.removeChild(pdfViewer.firstChild);
+                // Add a subtle page separator/indicator
+                if (pageNum > 1) {
+                    const separator = document.createElement('div');
+                    separator.className = 'page-separator';
+                    pdfViewer.appendChild(separator);
                 }
+                
+                // Add canvas to the viewer
                 pdfViewer.appendChild(canvas);
                 
                 // Render the PDF page
@@ -228,79 +240,28 @@
                     viewport: viewport
                 };
                 
-                const renderTask = page.render(renderContext);
-                
-                // Wait for rendering to finish
-                renderTask.promise.then(function() {
-                    pageRendering = false;
-                    
-                    // Hide loading message
-                    loadingMessage.style.display = 'none';
-                    
-                    // If there's a page pending, render it
-                    if (pageNumPending !== null) {
-                        renderPage(pageNumPending);
-                        pageNumPending = null;
-                    }
-                });
-            });
+                await page.render(renderContext).promise;
+            }
             
-            // Update page counters
-            document.getElementById('page-num').textContent = num;
-            
-            // Update button states
-            document.getElementById('prev').disabled = (num <= 1);
-            document.getElementById('next').disabled = (num >= pdfDoc.numPages);
+            // Hide loading message when all pages are rendered
+            loadingMessage.style.display = 'none';
         }
-        
-        // Function to queue a page for rendering
-        function queueRenderPage(num) {
-            if (pageRendering) {
-                pageNumPending = num;
-            } else {
-                renderPage(num);
-            }
-        }
-        
-        // Previous page button handler
-        document.getElementById('prev').addEventListener('click', function() {
-            if (pageNum <= 1) {
-                return;
-            }
-            pageNum--;
-            queueRenderPage(pageNum);
-        });
-        
-        // Next page button handler
-        document.getElementById('next').addEventListener('click', function() {
-            if (pageNum >= pdfDoc.numPages) {
-                return;
-            }
-            pageNum++;
-            queueRenderPage(pageNum);
-        });
         
         // Function to load a PDF
         function loadPDF(url) {
             // Show loading message
             loadingMessage.style.display = 'block';
             
-            // Handle spaces and special characters in the filename
-            const encodedUrl = encodeURIComponent(url);
-            const decodedUrl = decodeURIComponent(encodedUrl);
-            
             // Load the PDF
-            pdfjsLib.getDocument(decodedUrl).promise.then(function(pdf) {
-                pdfDoc = pdf;
-                document.getElementById('page-count').textContent = pdf.numPages;
-                
-                // Initial page render
-                pageNum = 1;
-                renderPage(pageNum);
-            }).catch(function(error) {
-                console.error('Error loading PDF:', error);
-                loadingMessage.textContent = 'Error loading PDF. Please try again later.';
-            });
+            pdfjsLib.getDocument(url).promise
+                .then(function(pdf) {
+                    pdfDoc = pdf;
+                    renderAllPages();
+                })
+                .catch(function(error) {
+                    console.error('Error loading PDF:', error);
+                    loadingMessage.textContent = 'Error loading PDF. Please try again later.';
+                });
         }
         
         // Function to change the current PDF
@@ -314,65 +275,36 @@
             }
         }
         
-        // Initialize with the first PDF
+        // Function to update zoom
+        function updateZoom(newScale) {
+            scale = newScale;
+            document.getElementById('zoom-value').textContent = Math.round(scale * 100) + '%';
+            renderAllPages();
+        }
+        
+        // Initialize the viewer
         document.addEventListener('DOMContentLoaded', function() {
-            // Set up button event listeners
-            document.getElementById('prev').addEventListener('click', function() {
-                if (pageNum <= 1) return;
-                pageNum--;
-                queueRenderPage(pageNum);
+            // Set up zoom control event listeners
+            document.getElementById('zoom-in').addEventListener('click', function() {
+                if (scale < 2.0) {
+                    updateZoom(scale + 0.1);
+                }
             });
             
-            document.getElementById('next').addEventListener('click', function() {
-                if (pageNum >= pdfDoc.numPages) return;
-                pageNum++;
-                queueRenderPage(pageNum);
+            document.getElementById('zoom-out').addEventListener('click', function() {
+                if (scale > 0.5) {
+                    updateZoom(scale - 0.1);
+                }
             });
             
             // Initial PDF load
             changePDF();
         });
         
-        // IMPORTANT SETUP NOTES:
-        
-        // 1. Your PDF file is already in your GitHub repository
-        // 2. Using the exact name "A1.01 Personalpronomen und Verben (1).pdf"
-        // 3. Make sure it's in the same directory as this HTML file
-        
-        // For the temporary solution until you upload the PDF:
-        // This code will attempt to directly fetch from Google Drive, but this will likely fail due to CORS issues
-        function fetchPdfFromGoogleDrive(fileId) {
-            const proxyUrl = 'https://api.allorigins.win/raw?url=';
-            const driveUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
-            
-            return fetch(proxyUrl + encodeURIComponent(driveUrl))
-                .then(response => response.arrayBuffer())
-                .catch(error => {
-                    console.error('Error fetching from Google Drive:', error);
-                    loadingMessage.textContent = 'Please upload the PDF directly to GitHub for this viewer to work.';
-                });
-        }
-        
-        // Try to load from Google Drive initially (but will likely fail due to CORS)
-        // This is a fallback until you upload the PDF directly to GitHub
+        // Load from the file in the GitHub repository
         window.addEventListener('load', function() {
-            const fileId = '1N4WLOHlKiUb_VJfK53ReLYFAQtikKFFT';
-            
-            fetchPdfFromGoogleDrive(fileId)
-                .then(arrayBuffer => {
-                    if (arrayBuffer) {
-                        pdfjsLib.getDocument({data: arrayBuffer}).promise.then(function(pdf) {
-                            pdfDoc = pdf;
-                            document.getElementById('page-count').textContent = pdf.numPages;
-                            pageNum = 1;
-                            renderPage(pageNum);
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Failed to load PDF from Google Drive:', error);
-                    loadingMessage.textContent = 'Please upload the PDF directly to GitHub for this viewer to work.';
-                });
+            const pdfUrl = 'A1.01 Personalpronomen und Verben (1).pdf';
+            loadPDF(pdfUrl);
         });
     </script>
 </body>
